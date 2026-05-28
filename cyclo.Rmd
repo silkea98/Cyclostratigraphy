@@ -1,0 +1,194 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#setwd("/Users/silkemaus/Downloads/PhD/cyclo_Al:Ti/testdaten")
+#getwd()
+
+#---- Packages ----
+library(readxl)
+library(ggplot2)
+library(astrochron)
+library(viridis)
+library(WaverideR)
+library(cowplot)
+```
+
+# Data Preparation
+
+```{r}
+df <- read.csv("/Users/silkemaus/Downloads/PhD/Germany/astrochron/XRF_U1410_with_AlTi.csv")
+#colnames(df)
+series <- data.frame(
+  depth = df$Depth.comp..mcd...Cappelli.et.al..2019..CCSF..,
+  TiAl = df$Ti_Al,
+  Age = df$Age..Ma
+)
+colnames(series) <- c("depth", "TiAl", "Age")
+
+series <- subset(series, depth >= 200 & depth <= 250)
+
+#range(series$Age)
+```
+Depth Span: 50m
+Age Span: 456 kyr
+
+--> SR = 50m/0.456Ma = 109.6 m/Ma --> 10.96 cm/kyr
+
+```{r}
+plot(series$depth, series$TiAl,
+     type = "l",
+     xlab = "Depth (mcd)",
+     ylab = "Ti/Al",
+     main = "U1410 Ti/Al vs Depth")
+grid()
+```
+
+# Interpolation
+
+```{r}
+# interpolate
+series_int <- linterp(series)
+```
+
+# MTM Spectral Analysis
+
+-   1/405 → long eccentricity
+
+-   1/130 → eccentricity
+
+-   1/33 → obliquity
+
+-   1/20 → precession
+
+ASM converts cycles/m ↔ cycles/kyr using sedimentation rate
+
+periodogram(series_int)
+
+series_det \<- detrend(series_int, method="loess", span=0.2)
+
+```{r}
+
+TiAl_mtm <- mtm(series_int, tbw=2, ntap=3, output =1)
+names(TiAl_mtm)
+```
+
+0.5430712   1.841379   95.1064   97.00803 
+
+Period  1.841379 m
+Sedimentationrate from earlier: 0.1096 m/kyr
+
+gives: 16.8 kyr
+
+--> close to precession (19 - 23 kyr)
+
+
+
+```{r}
+periodogram(series_int)
+```
+
+Plot Spectrum
+
+```{r}
+plot(TiAl_mtm$Frequency,
+     TiAl_mtm$Power,
+     type = "l",
+     xlab = "Frequency (cycles/m)",
+     ylab = "Power")
+
+```
+ASM braucht:
+# 1. Frequenzen aus MTM (cycles/m)
+freq_TiAl <- TiAl_mtm$Frequency
+# 2. Rayleigh frequency (aus Periodogramm)
+Rayleigh frequency: 0.04681648 
+# 3. Nyquist frequency (aus Periodogramm)
+Nyquist frequency: 25 
+# 4. Orbital target frequencies (cycles/kyr)
+mittleres Eozän
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+# 5. Suchbereich für Sedimentationsrate
+
+```{r}
+freq_TiAl <- TiAl_mtm$Frequency
+ray <- 0.04681648
+nyq <- 25
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+
+# relevante peak frequenzen
+freq_sig <- c(0.5430712, 1.179775, 14.17603 , 14.897, 15.88015, 16.25468 , 18.33333)
+```
+
+
+Precession
+
+```{r}
+TiAl_asm_pre <- asm(freq = freq_sig,
+                    target = target_pre,
+                    rayleigh = ray,
+                    nyquist = nyq,
+                    fper = rep(0.3, length(target_pre)),
+                    numsed = 100,
+                    sedmin = 5,
+                    sedmax = 15,
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+
+```{r}
+SR_cm <- 9.3
+SR_m  <- SR_cm / 100   # = 0.093 m/kyr
+
+# depth --> time
+
+depth <- series_int[,1]
+signal <- series_int[,2]
+
+time_kyr <- depth / SR_m
+
+# new df
+series_time <- cbind(time_kyr, signal)
+
+dt_time <- 0.02 / SR_m
+dt_time
+
+TiAl_mtm_time <- mtm(series_time,
+                     tbw = 2,
+                     ntap = 3,
+                     output = 1)
+```
+```{r}
+head(series_time)
+dt_time
+range(period_kyr)
+
+freq_time <- TiAl_mtm_time$Frequency
+power_time <- TiAl_mtm_time$Power
+
+valid <- freq_time > 0
+
+period_kyr <- 1 / freq_time[valid]
+power_time <- power_time[valid]
+
+plot(period_kyr,
+     power_time,
+     type = "l",
+     xlim = c(0, 50),
+     xlab = "Period (kyr)",
+     ylab = "Power")
+```
+```{r}
+
+```
+
