@@ -1,0 +1,279 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+#---- Packages ----
+library(readxl)
+library(ggplot2)
+library(astrochron)
+library(viridis)
+library(WaverideR)
+library(cowplot)
+```
+
+# Data Preparation
+
+```{r}
+df <- read.csv("/Users/silkemaus/Downloads/PhD/April26/cyclo_EGU/1408_1410.csv")
+#colnames(df)
+
+series <- data.frame(
+  depth = df$Depth.comp..mcd...two.site.composite..Depth.CCS....,
+  TiAl = df$Ti_Al,
+  Age = df$Age_Ma
+)
+colnames(series) <- c("depth", "TiAl", "Age")
+
+series <- subset(series, depth >= 50 & depth <= 240)
+
+range(series$Age)
+```
+
+Depth Span: 190 m Age Span: 6.39796 Myr --\> 6397.96 kyr
+
+--\> SR = 190m/6.39796 Myr = 29.6970 m/Myr --\> 2.97 cm/kyr
+
+# Interpolation, detrending
+
+```{r}
+# remove NA
+series <- na.omit(series)
+
+# detrend
+loess_fit <- loess(TiAl ~ depth, data = series, span = 0.2)
+series$TiAl_dt <- series$TiAl - predict(loess_fit)
+
+# standardize
+series$TiAl_std <- scale(series$TiAl_dt)
+
+# prepare clean data
+series_clean <- data.frame(
+  depth = series$depth,
+  TiAl = as.numeric(series$TiAl_std)
+)
+
+# remove outliers HERE (before interpolation)
+q <- quantile(series_clean$TiAl, c(0.01, 0.99))
+series_clean <- series_clean[
+  series_clean$TiAl > q[1] & series_clean$TiAl < q[2],
+]
+
+# NOW interpolate (this restores uniform spacing)
+series_int <- linterp(series_clean, dt = 0.02)
+```
+
+```{r}
+plot(series$depth, series$TiAl_std,
+     type = "l",
+     xlab = "Depth (mcd)",
+     ylab = "Standardized Ti/Al",
+     main = "Detrended & Standardized Ti/Al")
+grid()
+```
+
+# MTM Spectral Analysis
+
+-   1/405 → long eccentricity
+
+-   1/130 → eccentricity
+
+-   1/33 → obliquity
+
+-   1/20 → precession
+
+ASM converts cycles/m ↔ cycles/kyr using sedimentation rate
+
+periodogram(series_int)
+
+series_det \<- detrend(series_int, method="loess", span=0.2)
+
+```{r}
+
+TiAl_mtm <- mtm(series_int, tbw=2, ntap=3, output =1)
+names(TiAl_mtm)
+```
+
+Rednoise_CL ≳ 95% → robust signal very strong periods: ID / Frequency /
+Period / Harmonic_CL / Rednoise_CL 1 0.07051741 14.1809 90.69917 100
+--\> 473 kyr 2 0.08314739 12.02684 99.98571 99.99799 --\> 400 kyr 3
+0.09577738 10.44088 98.52804 100 --\> 347 kyr 4 0.1073549 9.314902
+98.40109 95.10091\
+5 0.1315623 7.60096 92.11312 99.92148 --\> 253 kyr 6 0.1631373 6.129806
+94.17595 98.34598
+
+## 8 0.1905023 5.249282 95.38511 98.86775 --\> 175 kyr
+
+below period is too small for orbital forcing
+
+do they correspond to eccentricity, obliquity, precession?
+
+use SR from earlier: SR = 2.97 cm/kyr = 0.0297 m/kyr
+
+eg: 14.2/0.0297 = 473 kyr (could be long ecc) no obliquity, precession
+
+--\> refine and estimate SR more precisely SR=12/405≈0.0296m/kyr
+
+#bandpass filter for main band: 5-15m 15m --\> 0.067 (f=1/lambda) 5m
+--\> 0.20
+
+```{r}
+
+bp <- bandpass(
+  series_int,
+  flow = 0.067,
+  fhigh = 0.20,
+  win = 1,
+  output = 1
+)
+```
+
+```{r}
+plot(bp[,1], bp[,2],
+     type="l",
+     xlab="Depth (mcd)",
+     ylab="Filtered signal",
+     main="Bandpass: 5–15 m (eccentricity band)")
+grid()
+```
+
+# Eha
+
+This checks if your signal is: stable through depth (true orbital) or
+random patches (noise)
+
+```{r}
+eha_res <- eha(series_int, win=20, step=1)
+
+# remove problematic values
+eha_res$z[!is.finite(eha_res$z)] <- NA
+```
+
+```{r}
+summary(series_int)
+head(series_int)
+```
+
+```{r}
+periodogram(series_int)
+```
+
+Plot Spectrum
+
+```{r}
+plot(TiAl_mtm$Frequency,
+     TiAl_mtm$Power,
+     type = "l",
+     xlab = "Frequency (cycles/m)",
+     ylab = "Power")
+
+```
+
+ASM braucht: \# 1. Frequenzen aus MTM (cycles/m) freq_TiAl \<-
+TiAl_mtm\$Frequency \# 2. Rayleigh frequency (aus Periodogramm) Rayleigh
+frequency: 0.005262604 \# 3. Nyquist frequency (aus Periodogramm)
+Nyquist frequency: 25 \# 4. Orbital target frequencies (cycles/kyr)
+mittleres Eozän target_pre \<- c(1/23, 1/21, 1/19) target_ob \<- c(1/41)
+target_ecc \<- c(1/125, 1/100, 1/95) target_405 \<- c(1/405) \# 5.
+Suchbereich für Sedimentationsrate
+
+relevante peak frequenzen von mtm in cycles/m --\> transform to
+wavelength lambda = 1/f freq_sig \<- c(0.07051741, 0.08314739,
+0.09577738, 0.1073549, 0.1315623, 0.1631373) lambda_sig \<- c(14.2,
+12.0, 10.4, 9.31, 7.6, 6.1)
+
+```{r}
+#Do these correspond to orbital cycles?
+#To test that, estimate sedimentation rate (SR): SR = cycle thickness (m)/orbital period (kyr)
+# eg. Precession: 14.2 m / 21 kyr ≈ 0.68 m/kyr (all around ~0.5–0.7 m/kyr)
+# eg. eccentricity: 14.2 / 100 = 0.14 m/kyr (differ too much --> not plausible)
+```
+
+3 precession peaks\_ 10.4 m / 19 ≈ 0.55 12.0 m / 21 ≈ 0.57 14.2 m / 23 ≈
+0.62 give good SR
+
+```{r}
+freq_TiAl <- TiAl_mtm$Frequency
+ray <- 0.005262604
+nyq <- 25
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+
+# relevante peak frequenzen in cycles/m
+freq_sig <- c(0.0705, 0.0831, 0.0958)
+```
+
+Precession
+
+```{r}
+TiAl_asm_pre <- asm(freq = freq_sig,
+                    target = target_pre,
+                    rayleigh = ray,
+                    nyquist = nyq,
+                    fper = rep(0.3, length(target_pre)),
+                    numsed = 100,
+                    sedmin = 1,    
+                    sedmax = 50,  
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+
+```{r}
+SR_cm <- 51.79602
+SR_m  <- SR_cm / 100   # = 0.52 m/kyr
+
+# depth --> time
+
+depth <- series_int[,1]
+signal <- series_int[,2]
+
+time_kyr <- depth / SR_m
+
+# new df
+series_time <- cbind(time_kyr, signal)
+
+dt_time <- 0.02 / SR_m
+dt_time
+
+TiAl_mtm_time <- mtm(series_time,
+                     tbw = 2,
+                     ntap = 3,
+                     output = 1)
+```
+
+```{r}
+head(series_time)
+dt_time
+
+
+freq_time <- TiAl_mtm_time$Frequency
+power_time <- TiAl_mtm_time$Power
+
+valid <- freq_time > 0
+
+period_kyr <- 1 / freq_time[valid]
+power_time <- power_time[valid]
+
+range(period_kyr)
+
+plot(period_kyr,
+     power_time,
+     type = "l",
+     xlim = c(0, 50),
+     xlab = "Period (kyr)",
+     ylab = "Power")
+```
+
+```{r}
+
+```
