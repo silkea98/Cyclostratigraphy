@@ -1,0 +1,145 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+#---- Packages ----
+library(readxl)
+library(ggplot2)
+library(astrochron)
+library(viridis)
+library(WaverideR)
+library(cowplot)
+```
+
+
+
+
+```{r}
+df <- read.csv("/Users/silkemaus/Downloads/PhD/April26/cyclo_EGU/1408_1410.csv")
+#colnames(df)
+
+series <- data.frame(
+  depth = df$Depth.comp..mcd...two.site.composite..Depth.CCS....,
+  TiAl = df$Ti_Al,
+  Age = df$Age_Ma
+)
+colnames(series) <- c("depth", "TiAl", "Age")
+
+series <- subset(series, depth >= 50 & depth <= 240)
+
+range(series$Age)
+```
+
+Depth Span: 190 m Age Span: 6.39796 Myr --> 6397.96 kyr
+
+--> SR = 190m/6.39796 Myr = 29.6970 m/Myr --> 2.97 cm/kyr
+
+```{r}
+plot(series$depth, series$TiAl,
+     type = "l",
+     xlab = "Depth (mcd)",
+     ylab = "Ti/Al",
+     main = "U1410- U1408 Ti/Al vs Depth")
+grid()
+```
+```{r}
+# interpolate
+series_int <- linterp(series)
+
+```
+# MTM
+
+```{r}
+TiAl_mtm <- mtm(series_int, tbw=2, ntap=3, output =1)
+names(TiAl_mtm)
+```
+lambda = 1/f
+eg. lambda = 1/0.069 = 14.39 m (i.e. Period) 
+this means 1 completele oscillation every 14.39 metres
+
+# compare to orbital cycles
+1) does 10.4 m represent 100 kyr eccentricity cycle?
+
+10.4/100 kyr = 10.4 cm/kyr (sounds plausible)
+
+2) does 10.4m represent 20 kyr precession cycle?
+10.4/20 kyr = 52. cm/kyr (doesn't make sense)
+
+```{r}
+periodogram(series_int)
+```
+```{r}
+plot(TiAl_mtm$Frequency,
+     TiAl_mtm$Power,
+     type = "l",
+     xlab = "Frequency (cycles/m)",
+     ylab = "Power")
+```
+ASM braucht:
+# 1. Frequenzen aus MTM (cycles/m)
+freq_TiAl <- TiAl_mtm$Frequency
+# 2. Rayleigh frequency (aus Periodogramm)
+Rayleigh frequency: 0.04681648 
+# 3. Nyquist frequency (aus Periodogramm)
+Nyquist frequency: 25 
+# 4. Orbital target frequencies (cycles/kyr)
+mittleres Eozän
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+# 5. Suchbereich für Sedimentationsrate
+
+```{r}
+freq_TiAl <- TiAl_mtm$Frequency
+ray <- 0.04681648
+nyq <- 25
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+```
+
+1) identify significant peaks from mtm
+2) group them into possible orbital bands
+ 2m --> precession
+ 
+# weak/hidden?
+ 4m --> obliquity
+ 
+6   0.1315789   7.6   90.56376   98.4932 
+7   0.1631579   6.129032   94.12091   88.33791 
+8   0.18   5.555556   96.67566   63.56607 
+9   0.1905263   5.248619   95.62852   87.57583 
+ 
+ 10m --> eccentricity 
+2   0.06947368   14.39394   90.23912   99.99953  
+ 3   0.08315789   12.02532   99.99734   99.03546 
+4   0.09578947   10.43956   98.49757   99.96932 
+5   0.1073684   9.313725   99.07972   73.7946 
+ 
+3) run ASM separately for precession, obliquity and eccentricity
+
+```{r}
+# eccentricity asm
+freq_sig_ecc <- c(0.08315789, 0.09578947, 0.1073684)
+TiAl_asm_ecc <- asm(freq = freq_sig_ecc,
+                    target = target_ecc,
+                    rayleigh = ray,
+                    nyquist = nyq,
+                    fper = rep(0.3, length(target_pre)),
+                    numsed = 100,
+                    sedmin = 3,
+                    sedmax = 20,
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+
