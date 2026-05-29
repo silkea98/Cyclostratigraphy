@@ -1,0 +1,257 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+#---- Packages ----
+library(readxl)
+library(ggplot2)
+library(astrochron)
+library(viridis)
+library(WaverideR)
+library(cowplot)
+```
+
+
+
+
+```{r}
+df <- read.csv("/Users/silkemaus/Downloads/PhD/April26/cyclo_EGU/1408_1410.csv")
+#colnames(df)
+
+series <- data.frame(
+  depth = df$Depth.comp..mcd...two.site.composite..Depth.CCS....,
+  TiAl = df$Ti_Al,
+  Age = df$Age_Ma
+)
+colnames(series) <- c("depth", "TiAl", "Age")
+
+series <- subset(series, depth >= 50 & depth <= 240)
+series_1 <- subset(series, depth >= 50 & depth <= 100)
+
+series_2 <- subset(series, depth >= 100 & depth <= 150)
+
+series_3 <- subset(series, depth >= 150 & depth <= 240)
+
+
+
+range(series_3$Age)
+
+```
+
+total Depth Span: 190 m Age Span: 6.39796 Myr --> 6397.96 kyr
+
+--> SR = 190m/6.39796 Myr = 29.6970 m/Myr --> 2.97 cm/kyr
+
+series 1: SR = 50m/1.48482 Myr = 33.68 m/Myr = 3.368 cm/kyr
+series 2: SR = 50m/1.58985 = 3.14 cm/kyr
+series 3: SR = 90/3.32 = 2.71 cm/kyr
+
+
+
+```{r}
+plot(series$depth, series$TiAl,
+     type = "l",
+     xlab = "Depth (mcd)",
+     ylab = "Ti/Al",
+     main = "U1410- U1408 Ti/Al vs Depth")
+grid()
+```
+```{r}
+# interpolate
+series_int <- linterp(series)
+series_1_int <- linterp(series_1)
+series_2_int <- linterp(series_2)
+series_3_int <- linterp(series_3)
+
+
+```
+# MTM series 1
+
+```{r}
+TiAl_mtm_1 <- mtm(series_1_int, tbw=2, ntap=3, output =1)
+
+```
+
+
+# compare to orbital cycles
+eccentricity 
+2   0.08795778   11.36909   95.41827   80.39968 
+
+
+precession
+3   1.015513   0.9847244   91.90724   94.97084 
+4   1.155445   0.8654671   97.24538   96.6557 
+5   1.259395   0.7940317   95.10762   98.89088 
+6   1.475292   0.677832   96.88626   72.67784 
+7   1.523269   0.6564829   93.70115   95.16203 
+8   1.595234   0.6268672   91.54664   90.53857 
+
+
+# periodogram series 1
+```{r}
+periodogram(series_1_int)
+```
+ASM braucht:
+# 1. Frequenzen aus MTM (cycles/m)
+freq_TiAl <- TiAl_mtm$Frequency
+# 2. Rayleigh frequency (aus Periodogramm)
+Rayleigh frequency: 0.04681648 
+# 3. Nyquist frequency (aus Periodogramm)
+Nyquist frequency: 25 
+# 4. Orbital target frequencies (cycles/kyr)
+mittleres Eozän
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+# 5. Suchbereich für Sedimentationsrate
+
+```{r}
+freq_TiAl <- TiAl_mtm_1$Frequency
+ray <- 0.04681648
+nyq <- 25
+target_pre <- c(1/23, 1/21, 1/19)
+target_ob <- c(1/41)
+target_ecc <- c(1/125, 1/100, 1/95)
+target_405 <- c(1/405)
+```
+
+ 
+ run ASM separately for precession, obliquity and eccentricity
+
+```{r}
+# eccentricity asm_1 # doesn't make sense because there is only one significant peak --> better to estimate sedrate directly: SR = 11.37/100 = 11.37 cm/kyr
+freq_sig_1_ecc <- c(0.08795778)
+TiAl_asm_1_ecc <- asm(freq = freq_sig_1_ecc,
+                    target = target_ecc,
+                    rayleigh = 0.019992 ,
+                    nyquist = 25,
+                    fper = rep(0.3, length(target_ecc)),
+                    numsed = 100,
+                    sedmin = 3,
+                    sedmax = 20,
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+
+```{r}
+# precession asm series 1
+freq_sig_1_pre <- c(1.015513, 1.155445, 1.259395, 1.475292, 1.523269, 1.595234)
+TiAl_asm_1_pre <- asm(freq = freq_sig_1_pre,
+                    target = target_pre,
+                    rayleigh = 0.019992,
+                    nyquist = 25,
+                    fper = rep(0.3, length(target_pre)),
+                    numsed = 100,
+                    sedmin = 3,
+                    sedmax = 20,
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+
+#Series 2
+
+MTM
+```{r}
+TiAl_mtm_2 <- mtm(series_2_int, tbw=2, ntap=3, output =1)
+```
+Eccentricity
+
+Obliquity
+
+Precession
+1   1.407324   0.7105682   98.3402   67.99936 
+2   1.455301   0.6871429   98.48562   67.24325 
+
+1.407324, 1.455301
+rest is probably noise
+
+Periodogram
+```{r}
+periodogram(series_2_int)
+```
+```{r}
+# precession asm series 2
+freq_sig_2_pre <- c(1.407324, 1.455301)
+TiAl_asm_2_pre <- asm(freq = freq_sig_2_pre,
+                    target = target_pre,
+                    rayleigh = 0.019992,
+                    nyquist = 25,
+                    fper = rep(0.3, length(target_pre)),
+                    numsed = 100,
+                    sedmin = 3,
+                    sedmax = 20,
+                    iter = 500,
+                    genplot = TRUE,
+                    output = TRUE,
+                    linLog = 1)
+```
+# series 3
+MTM
+```{r}
+TiAl_mtm_3 <- mtm(series_3_int, tbw=2, ntap=3, output =1)
+```
+Eccentricity
+2   0.09555556   10.46512   94.91089   97.35619 
+
+
+If interpreted as 405 kyr:
+
+10.5 m/405 kyr=2.6 cm/kyr
+
+```{r}
+
+```
+
+try etimeopt
+- it is built for variable sedimentation rates,
+- uses moving windows,
+```{r}
+
+
+etime <- eTimeOpt(
+    series_int,
+    win = 60,
+    step = 5,
+    sedmin = 1,
+    sedmax = 6,
+    numsed = 200,
+    linLog = 1,
+    fit = 1,
+    fitModPwr = TRUE,
+    detrend = TRUE,
+    output = 1,
+    genplot = TRUE,
+    check = TRUE,
+    verbose = 1
+)
+```
+```{r}
+etime <- eTimeOpt(
+    series_int,
+    win = 80,
+    step = 5,
+    sedmin = 1,
+    sedmax = 6,
+    numsed = 200,
+    linLog = 1,
+    fit = 1,
+    fitModPwr = TRUE,
+    detrend = TRUE,
+    output = 1,
+    genplot = TRUE,
+    check = TRUE,
+    verbose = 1
+)
+```
+
